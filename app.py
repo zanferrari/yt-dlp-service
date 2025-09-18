@@ -10,12 +10,10 @@ def root():
 @app.get("/info")
 def get_info(url: str = Query(..., description="Public video URL")):
     try:
-        # yt-dlp options for metadata only, no cookies
         ydl_opts = {
             "quiet": True,
-            "format": "bestaudio/best",  # best audio fallback
             "noplaylist": True,
-            "ignoreerrors": True,        # skip restricted videos
+            "ignoreerrors": True,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -23,11 +21,18 @@ def get_info(url: str = Query(..., description="Public video URL")):
             if not info:
                 return {"error": "Video not available or restricted"}
 
-            # Find best audio
+            # Select best video+audio format
+            best_stream = None
             best_audio = None
             for f in info.get("formats", []):
-                if f.get("acodec") != "none" and (best_audio is None or f.get("abr",0) > best_audio.get("abr",0)):
-                    best_audio = f
+                # Best video+audio
+                if f.get("vcodec") != "none" and f.get("acodec") != "none":
+                    if best_stream is None or f.get("height", 0) > best_stream.get("height", 0):
+                        best_stream = f
+                # Best audio-only
+                if f.get("acodec") != "none" and f.get("vcodec") == "none":
+                    if best_audio is None or f.get("abr", 0) > best_audio.get("abr", 0):
+                        best_audio = f
 
             return {
                 "title": info.get("title"),
@@ -35,4 +40,8 @@ def get_info(url: str = Query(..., description="Public video URL")):
                 "duration": info.get("duration"),
                 "thumbnail": info.get("thumbnail"),
                 "best_audio_url": best_audio.get("url") if best_audio else None,
-                "stream_ur_
+                "best_stream_url": best_stream.get("url") if best_stream else None
+            }
+
+    except Exception as e:
+        return {"error": str(e)}
